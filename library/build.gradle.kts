@@ -152,33 +152,49 @@ sqldelight {
 mavenPublishing {
     publishToMavenCentral()
 
-    signAllPublications()
+    // Only Central demands signatures, and only the release workflow has a key. JitPack builds with
+    // no key at all, so asking to sign there just fails the publication.
+    if (providers.gradleProperty("signingInMemoryKey").isPresent) {
+        signAllPublications()
+    }
 
-    coordinates(group.toString(), "library", version.toString())
+    // Maven Central gets fr.acinq.phoenix:library:<version>; jitpack.yml overrides these because
+    // JitPack serves a repository's modules under `com.github.<user>.<repo>`, and a multiplatform
+    // publication has to be built under the coordinates it will be resolved by -- gradle module
+    // metadata records its own group/name/version and gradle rejects a module whose metadata
+    // disagrees with the coordinates it was requested under.
+    //
+    // Only the coordinates move. `project.group` stays put because compose-resources derives the
+    // generated `Res` package from it, and every import of it is `fr.acinq.phoenix.library.*`.
+    coordinates(
+        groupId = providers.gradleProperty("publishGroupId").getOrElse(group.toString()),
+        artifactId = "library",
+        version = providers.gradleProperty("publishVersion").getOrElse(version.toString()),
+    )
 
     pom {
         name = "Lightning KMP Application"
         description = "A library that extends lightning-kmp-core with application specific logic."
         inceptionYear = "2024"
-        url = "https://github.com/kotlin/multiplatform-library-template/"
+        url = "https://github.com/kngako/lightning-kmp-app"
         licenses {
             license {
-                name = "XXX"
-                url = "YYY"
-                distribution = "ZZZ"
+                name = "The Apache License, Version 2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                distribution = "https://www.apache.org/licenses/LICENSE-2.0.txt"
             }
         }
         developers {
             developer {
-                id = "XXX"
-                name = "YYY"
-                url = "ZZZ"
+                id = "kngako"
+                name = "Kgothatso Ngako"
+                url = "https://github.com/kngako"
             }
         }
         scm {
-            url = "XXX"
-            connection = "YYY"
-            developerConnection = "ZZZ"
+            url = "https://github.com/kngako/lightning-kmp-app"
+            connection = "scm:git:git://github.com/kngako/lightning-kmp-app.git"
+            developerConnection = "scm:git:ssh://git@github.com/kngako/lightning-kmp-app.git"
         }
     }
 }

@@ -1,0 +1,24 @@
+# JitPack builds a tag in a linux container and then serves whatever the build left in
+# ~/.m2/repository. Two things have to line up:
+#
+#  * the coordinates. JitPack serves a repository's modules under `<GROUP>.<ARTIFACT>` -- here
+#    com.github.kngako.lightning-kmp-app -- and a multiplatform publication has to be built under the
+#    coordinates it will be resolved by, so the publication group and version are handed to the build
+#    below rather than left at the fr.acinq.phoenix defaults used for Maven Central.
+#  * the jdk. Gradle 9 and AGP 9 both need 17+, and JitPack still defaults to 8. If a build log ever
+#    shows it ignoring this and starting on 8, install one through sdkman in before_install instead:
+#    `sdk install java 17.0.13-tem` / `sdk use java 17.0.13-tem`.
+jdk:
+  - openjdk17
+
+before_install:
+  # AGP fetches whatever platform/build-tools compileSdk needs, but only once the licences are
+  # accepted. They already are on the JitPack image; this is here for the day they are not.
+  - yes | sdkmanager --licenses > /dev/null 2>&1 || true
+
+install:
+  # logged so a wrong jdk shows up as the first line of the build log rather than a mystery later on
+  - java -version
+  # the default for maven-publish projects is `build publishToMavenLocal`, which would also run the
+  # test suites; publishing is all that is wanted here.
+  - ./gradlew --no-daemon --no-configuration-cache -PpublishGroupId=$GROUP.$ARTIFACT -PpublishVersion=$VERSION publishToMavenLocal
