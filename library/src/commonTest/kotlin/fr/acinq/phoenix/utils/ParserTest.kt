@@ -235,6 +235,48 @@ class ParserTest {
         }
     }
 
+    /** An amount without a decimal separator must not reuse the integer part as the fractional part. */
+    @Test
+    fun parse_bitcoin_uri_with_amount_without_decimal_separator() {
+        listOf<Pair<String, Either<BitcoinUriError, BitcoinUri>>>(
+            "bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=1" to Either.Right(
+                BitcoinUri(
+                    chain = Chain.Mainnet,
+                    address = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+                    script = ByteVector("0014751e76e8199196d454941c45d1b3a323f1433bd6"),
+                    amount = 1_00000000.sat
+                )
+            ),
+            "bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=2" to Either.Right(
+                BitcoinUri(
+                    chain = Chain.Mainnet,
+                    address = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+                    script = ByteVector("0014751e76e8199196d454941c45d1b3a323f1433bd6"),
+                    amount = 2_00000000.sat
+                )
+            ),
+            "bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=10" to Either.Right(
+                BitcoinUri(
+                    chain = Chain.Mainnet,
+                    address = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+                    script = ByteVector("0014751e76e8199196d454941c45d1b3a323f1433bd6"),
+                    amount = 10_00000000.sat
+                )
+            ),
+            // a trailing separator with no fractional digits is equivalent to no separator at all
+            "bitcoin:bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4?amount=1." to Either.Right(
+                BitcoinUri(
+                    chain = Chain.Mainnet,
+                    address = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+                    script = ByteVector("0014751e76e8199196d454941c45d1b3a323f1433bd6"),
+                    amount = 1_00000000.sat
+                )
+            )
+        ).forEach {
+            assertEquals(it.second, Parser.parseBip21Uri(Chain.Mainnet, it.first))
+        }
+    }
+
     @Test
     fun test_prefixes() {
         val lnurlw = "LNURL1DP68GURN8GHJ7MRWW4EXCTNXD9SHG6NPVCHXXMMD9AKXUATJDSKHW6T5DPJ8YCTH8AEK2UMND9HKU0FKVESNZDFEX4SNXENZV4JNWWF3VENXVV3H8YUXYE3JXQMNJCF4VYMNSCEKXFSKGC3S8YENVCEJVDJXXVRXXSUKGCMY8QERSCFKXFJRZ0FPS8D"
