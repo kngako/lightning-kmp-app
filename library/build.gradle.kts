@@ -27,6 +27,9 @@ kotlin {
         }
         withDeviceTestBuilder {
             sourceSetTreeName = "test"
+        }.configure {
+            // without an instrumentation runner the device tests cannot be executed at all
+            instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         }
 
         compilerOptions {
@@ -53,6 +56,15 @@ kotlin {
             implementation(libs.robolectric)
 
             implementation(libs.androidx.test.core.ktx)
+            implementation(libs.androidx.test.ext.junit)
+        }
+        // Robolectric itself is host-only -- it substitutes for a device, so it cannot run on one. What is
+        // shared is the runner annotation: @RunWith(AndroidJUnit4::class) delegates to RobolectricTestRunner
+        // on the jvm and to AndroidJUnit4ClassRunner on a device, so one test class works in both places.
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.androidx.test.core.ktx)
+            implementation(libs.androidx.test.ext.junit)
+            implementation(libs.androidx.test.runner)
         }
         commonMain.dependencies {
             implementation(libs.androidx.datastore)
