@@ -115,6 +115,10 @@ fun PrivateKey.nsecPassword(): String {
 
 fun LocalKeyManager.nsecPassword(): String = nostrPrivateKey().nsecPassword()
 
+fun LocalKeyManager.nostrPublicKey(): String {
+    return nostrPrivateKey().publicKey().toHex()
+}
+
 fun LocalKeyManager.cloudKeyHash(): String {
     return Crypto.hash160(cloudKey()).byteVector().toHex()
 }
