@@ -46,7 +46,10 @@ kotlin {
             implementation(libs.androidx.exifinterface)
 
         }
-        androidUnitTest.dependencies {
+        // note: the android target of `com.android.kotlin.multiplatform.library` names its host (unit) test
+        // source set `androidHostTest`, not `androidUnitTest`. Declaring these on `androidUnitTest` left them
+        // off every compilation, so Robolectric was never actually on the test classpath.
+        getByName("androidHostTest").dependencies {
             implementation(libs.robolectric)
 
             implementation(libs.androidx.test.core.ktx)
