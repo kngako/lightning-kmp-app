@@ -1,12 +1,13 @@
 package fr.acinq.phoenix.utils
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.runBlocking
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
-@RunWith(RobolectricTestRunner::class)
+/** [AndroidJUnit4] resolves to Robolectric here and to the on-device runner in `androidDeviceTest`. */
+@RunWith(AndroidJUnit4::class)
 class DnsResolversTests {
 
     @Test

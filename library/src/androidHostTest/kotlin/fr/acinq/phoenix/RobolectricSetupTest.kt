@@ -19,11 +19,12 @@ package fr.acinq.phoenix
 import android.content.Context
 import android.os.Build
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import fr.acinq.phoenix.utils.PlatformContext
 import fr.acinq.phoenix.utils.getApplicationFilesDirectoryPath
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -33,14 +34,27 @@ import kotlin.test.assertTrue
  * target does not compile, so it silently sat off the test classpath and nothing failed to tell us. These
  * assertions fail loudly if that happens again: without a working Robolectric runtime, touching any android
  * API here raises "not mocked" (or the context is simply unavailable).
+ *
+ * This class deliberately uses the same [AndroidJUnit4] runner as the rest of the android tests rather than
+ * naming [org.robolectric.RobolectricTestRunner] directly, so that it also covers the delegation: on the jvm
+ * that runner resolves to Robolectric, and on a device to the instrumentation runner.
  */
-@RunWith(RobolectricTestRunner::class)
+@RunWith(AndroidJUnit4::class)
 class RobolectricSetupTest {
 
     @Test
     fun android_runtime_is_available() {
         assertTrue(Build.VERSION.SDK_INT > 0, "android framework classes should be backed by Robolectric")
         println("robolectric is running against sdk=${Build.VERSION.SDK_INT}")
+    }
+
+    /** Robolectric stamps its own build fingerprint, so this proves the delegation actually landed on it. */
+    @Test
+    fun android_junit4_delegates_to_robolectric_on_the_jvm() {
+        assertEquals(
+            "robolectric", Build.FINGERPRINT,
+            "expected AndroidJUnit4 to delegate to RobolectricTestRunner on the host jvm"
+        )
     }
 
     @Test
