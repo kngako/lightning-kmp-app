@@ -65,6 +65,13 @@ kotlin {
             implementation(libs.androidx.test.core.ktx)
             implementation(libs.androidx.test.ext.junit)
             implementation(libs.androidx.test.runner)
+
+            // lightning-kmp-core publishes no android variant, so the android target resolves it to the jvm
+            // one, which brings the desktop secp256k1 jni binding -- and agp strips that .so out of the apk.
+            // This artifact supplies `NativeSecp256k1AndroidLoader`, which `Secp256k1` tries before the jvm
+            // loader, along with the .so for every device abi. Without it every test touching bitcoin crypto
+            // dies on "Could not load native Secp256k1 JNI library".
+            implementation(libs.secp256k1.kmp.jni.android)
         }
         commonMain.dependencies {
             implementation(libs.androidx.datastore)
@@ -114,6 +121,15 @@ kotlin {
             implementation(libs.sqldelight.native.driver)
         }
     }
+}
+
+// The compose-resources plugin registers a "copy compose resources into the android assets" task for every
+// android component, but only gives it an output directory when the component exposes an assets source set.
+// The kmp android device-test component does not, so the task is left with an unset @OutputDirectory and
+// fails validation -- which blocks the instrumented tests from even compiling. Nothing consumes its output
+// (that wiring is exactly what is missing), so skip it.
+tasks.matching { it.name == "copyAndroidDeviceTestComposeResourcesToAndroidAssets" }.configureEach {
+    enabled = false
 }
 
 sqldelight {

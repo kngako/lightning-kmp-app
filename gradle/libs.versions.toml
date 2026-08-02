@@ -28,6 +28,8 @@ okio = "3.17.0"
 qrose = "1.1.2"
 
 robolectric = "4.16.1"
+# must track what lightningKmpCore resolves fr.acinq.secp256k1:secp256k1-kmp-jni-jvm to
+secp256k1 = "0.22.0"
 sqldelight = "2.3.2"
 
 testExtJunit = "1.3.0"
@@ -64,6 +66,7 @@ lightning-kmp-core = { module = "fr.acinq.lightning:lightning-kmp-core", version
 navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+secp256k1-kmp-jni-android = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-android", version.ref = "secp256k1" }
 sqldelight-android-driver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-native-driver = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
