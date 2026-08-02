@@ -1,0 +1,91 @@
+/*
+ * Copyright 2022 ACINQ SAS
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package fr.acinq.phoenix.utils.extensions
+
+import fr.acinq.lightning.MilliSatoshi
+import fr.acinq.lightning.channel.Commitment
+import fr.acinq.lightning.channel.states.Aborted
+import fr.acinq.lightning.channel.states.ChannelState
+import fr.acinq.lightning.channel.states.ChannelStateWithCommitments
+import fr.acinq.lightning.channel.states.Closed
+import fr.acinq.lightning.channel.states.Closing
+import fr.acinq.lightning.channel.states.Negotiating
+import fr.acinq.lightning.channel.states.Offline
+import fr.acinq.lightning.channel.states.Syncing
+import fr.acinq.lightning.channel.states.WaitForAcceptChannel
+import fr.acinq.lightning.channel.states.WaitForChannelReady
+import fr.acinq.lightning.channel.states.WaitForFundingConfirmed
+import fr.acinq.lightning.channel.states.WaitForFundingCreated
+import fr.acinq.lightning.channel.states.WaitForFundingSigned
+import fr.acinq.lightning.channel.states.WaitForInit
+import fr.acinq.lightning.channel.states.WaitForOpenChannel
+import fr.acinq.lightning.channel.states.WaitForRemotePublishFutureCommitment
+import fr.acinq.lightning.utils.msat
+
+
+fun ChannelState.isTerminated(): Boolean {
+    return when (this) {
+        is Syncing -> state.isTerminated()
+        is Offline -> state.isTerminated()
+        is Closing, is Closed, is Aborted -> true
+        else -> false
+    }
+}
+
+fun ChannelState.isBeingCreated(): Boolean {
+    return when (this) {
+        is Syncing -> state.isBeingCreated()
+        is Offline -> state.isBeingCreated()
+        is WaitForAcceptChannel,
+        is WaitForChannelReady,
+        is WaitForFundingConfirmed,
+        is WaitForFundingCreated,
+        is WaitForFundingSigned,
+        is WaitForInit,
+        is WaitForOpenChannel,
+        is WaitForRemotePublishFutureCommitment -> true
+        else -> false
+    }
+}
+
+/**
+ * The balance that we can use to spend. Uses the [Commitment.availableBalanceForSend] method under the hood.
+ * For some states, this balance is forced to null.
+ */
+fun ChannelState.localBalance(): MilliSatoshi? {
+    return when (this) {
+        // if offline or syncing, check the underlying state.
+        is Offline -> state.localBalance()
+        is Syncing -> state.localBalance()
+        // for some states the balance should be 0
+        is Closing -> 0.msat
+        is Closed -> 0.msat
+        is Aborted -> null
+        // balance is unknown
+        is Negotiating -> null
+        is WaitForAcceptChannel -> null
+        is WaitForChannelReady -> null
+        is WaitForFundingConfirmed -> null
+        is WaitForFundingCreated -> null
+        is WaitForFundingSigned -> null
+        is WaitForInit -> null
+        is WaitForOpenChannel -> null
+        is WaitForRemotePublishFutureCommitment -> null
+        // regular case
+        is ChannelStateWithCommitments -> commitments.availableBalanceForSend()
+    }
+}

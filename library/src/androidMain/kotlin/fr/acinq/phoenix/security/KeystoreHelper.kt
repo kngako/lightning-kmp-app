@@ -1,0 +1,116 @@
+/*
+ * Copyright 2020 ACINQ SAS
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package fr.acinq.phoenix.security
+
+import android.os.Build
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import co.touchlab.kermit.Logger
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.IvParameterSpec
+
+object KeystoreHelper {
+  private val log = Logger.withTag("KeystoreHelper")
+
+  private val ENC_ALGO = KeyProperties.KEY_ALGORITHM_AES
+  private val ENC_BLOCK_MODE = KeyProperties.BLOCK_MODE_CBC
+  private val ENC_PADDING = KeyProperties.ENCRYPTION_PADDING_PKCS7
+
+  private val keyStore by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+    KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+  }
+
+  private fun getOrCreateKeyNoAuthRequired(): SecretKey {
+    keyStore.getKey(KeyStoreNames.KEY_NO_AUTH, null)?.let { return it as SecretKey }
+    val spec = KeyGenParameterSpec.Builder(KeyStoreNames.KEY_NO_AUTH, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).apply {
+      setBlockModes(ENC_BLOCK_MODE)
+      setEncryptionPaddings(ENC_PADDING)
+      setRandomizedEncryptionRequired(true)
+      setKeySize(256)
+      setUserAuthenticationRequired(false)
+      setInvalidatedByBiometricEnrollment(false)
+    }
+    return generateKeyWithSpec(spec)
+  }
+
+  /** Generate key from key gen specs. If possible, store the key in strongbox. */
+  private fun generateKeyWithSpec(spec: KeyGenParameterSpec.Builder): SecretKey {
+    val keygen = KeyGenerator.getInstance(ENC_ALGO, keyStore.provider)
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      // try to use strongbox on Android 9+, which is only supported by a few devices
+      try {
+        spec.setIsStrongBoxBacked(true)
+        keygen.init(spec.build())
+        keygen.generateKey()
+      } catch (e: Exception) {
+        log.w("failed to generate key with strongbox enabled: ${e.javaClass.simpleName}: ${e.localizedMessage}, trying again without strongbox")
+        spec.setIsStrongBoxBacked(false)
+        keygen.init(spec.build())
+        keygen.generateKey()
+      }
+    } else {
+      keygen.init(spec.build())
+      keygen.generateKey()
+    }
+  }
+
+  private fun getKeyForName(keyName: String): SecretKey = when (keyName) {
+    KeyStoreNames.KEY_NO_AUTH -> getOrCreateKeyNoAuthRequired()
+    KeyStoreNames.KEY_FOR_PINCODE_V1 -> getOrCreateKeyNoAuthRequired()
+    else -> throw IllegalArgumentException("unhandled key=$keyName")
+  }
+
+  /**
+   * Get the encryption cipher for the key. If it fails once, delete the key, and try again. This should only be used by the seed fallback to check if the
+   * keystore is accessible. This seems to (rarely) happen after an OS update that fails to upgrade the key (raising a `upgrade_keyblob_if_required_with`
+   * error), and might be related to the secure element option?
+   */
+  fun checkEncryptionCipherOrReset(keyName: String) = when (keyName) {
+    KeyStoreNames.KEY_NO_AUTH -> {
+      try {
+        getEncryptionCipher(keyName)
+      } catch (e: Exception) {
+        log.e("could not get encryption cipher: ${e.localizedMessage}")
+        try {
+          log.e("deleting key=$keyName from keystore")
+          keyStore.deleteEntry(keyName)
+          getEncryptionCipher(keyName)
+        } catch (e: Exception) {
+          log.e("cannot delete $keyName entry from keystore: ${e.localizedMessage}")
+          throw e
+        }
+      }
+    }
+
+    else -> {
+      throw IllegalArgumentException("unhandled key_name=$keyName")
+    }
+  }
+
+  /** Get encryption Cipher for given key. */
+  internal fun getEncryptionCipher(keyName: String): Cipher = Cipher.getInstance("$ENC_ALGO/$ENC_BLOCK_MODE/$ENC_PADDING").apply {
+    init(Cipher.ENCRYPT_MODE, getKeyForName(keyName), parameters)
+  }
+
+  /** Get decryption Cipher for given key. */
+  internal fun getDecryptionCipher(keyName: String, iv: ByteArray): Cipher = Cipher.getInstance("$ENC_ALGO/$ENC_BLOCK_MODE/$ENC_PADDING").apply {
+    init(Cipher.DECRYPT_MODE, getKeyForName(keyName), IvParameterSpec(iv))
+  }
+}
