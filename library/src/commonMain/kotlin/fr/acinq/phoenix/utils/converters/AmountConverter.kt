@@ -124,12 +124,18 @@ object AmountConverter {
         BitcoinUnit.Btc -> this.toBigDecimal().moveDecimalPoint(11).longValue(false).msat
     }
 
-    /** Converts [MilliSatoshi] to another Bitcoin unit. */
+    /**
+     * Converts [MilliSatoshi] to another Bitcoin unit.
+     *
+     * Note: [doubleValue] must be called with `exactRequired = false`. Most amounts have no exact binary
+     * representation once shifted (1 sat = 0.00000001 btc, for example), and the default `true` makes the
+     * conversion throw an [ArithmeticException] instead of rounding to the nearest double.
+     */
     fun MilliSatoshi.toUnit(unit: BitcoinUnit): Double = when (unit) {
-        BitcoinUnit.Sat -> this.msat.toBigDecimal().moveDecimalPoint(-3).doubleValue()
-        BitcoinUnit.Bit -> this.msat.toBigDecimal().moveDecimalPoint(-5).doubleValue()
-        BitcoinUnit.MBtc -> this.msat.toBigDecimal().moveDecimalPoint(-8).doubleValue()
-        BitcoinUnit.Btc -> this.msat.toBigDecimal().moveDecimalPoint(-11).doubleValue()
+        BitcoinUnit.Sat -> this.msat.toBigDecimal().moveDecimalPoint(-3).doubleValue(false)
+        BitcoinUnit.Bit -> this.msat.toBigDecimal().moveDecimalPoint(-5).doubleValue(false)
+        BitcoinUnit.MBtc -> this.msat.toBigDecimal().moveDecimalPoint(-8).doubleValue(false)
+        BitcoinUnit.Btc -> this.msat.toBigDecimal().moveDecimalPoint(-11).doubleValue(false)
     }
 
     /** Converts [MilliSatoshi] to a fiat amount. */

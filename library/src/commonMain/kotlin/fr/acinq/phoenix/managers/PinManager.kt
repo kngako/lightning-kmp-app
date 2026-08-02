@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import fr.acinq.phoenix.data.WalletId
 import fr.acinq.phoenix.security.EncryptedPinLock
 import fr.acinq.phoenix.security.EncryptedPinSpending
+import fr.acinq.phoenix.utils.PlatformContext
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -17,16 +18,11 @@ object PinManager {
     private const val LOCK_PIN_FILE_NAME = "pin.dat"
     private const val SPENDING_PIN_FILE_NAME = "spending_pin.dat"
 
-    private fun getDataDir(): Path {
-        val datadir = SeedManager.getDatadir()
-        if (!FileSystem.SYSTEM.exists(datadir)) {
-            FileSystem.SYSTEM.createDirectory(datadir)
-        }
-        return datadir
-    }
+    /** The pin codes live alongside the seed, in the durable app-private directory. See [SeedManager.getDatadir]. */
+    private fun getDataDir(ctx: PlatformContext): Path = SeedManager.getDatadir(ctx)
 
-    private fun getEncryptedPinFromDisk(fileName: String): ByteArray? {
-        val encryptedPinFile = getDataDir().resolve(fileName)
+    private fun getEncryptedPinFromDisk(ctx: PlatformContext, fileName: String): ByteArray? {
+        val encryptedPinFile = getDataDir(ctx).resolve(fileName)
         val encryptedPinFileMetadata = FileSystem.SYSTEM.metadataOrNull(encryptedPinFile)
 
         return if (!FileSystem.SYSTEM.exists(encryptedPinFile)) {
@@ -54,8 +50,8 @@ object PinManager {
         }
     }
 
-    fun getLockPinMapFromDisk(): Map<WalletId, String> {
-        val encryptedPin = getEncryptedPinFromDisk( LOCK_PIN_FILE_NAME)?.let {
+    fun getLockPinMapFromDisk(ctx: PlatformContext): Map<WalletId, String> {
+        val encryptedPin = getEncryptedPinFromDisk(ctx, LOCK_PIN_FILE_NAME)?.let {
             EncryptedPinLock.deserialize(it)
         }
         return when (encryptedPin) {
@@ -68,8 +64,8 @@ object PinManager {
         }
     }
 
-    fun getSpendingPinMapFromDisk(): Map<WalletId, String> {
-        val encryptedPin = getEncryptedPinFromDisk(SPENDING_PIN_FILE_NAME)?.let {
+    fun getSpendingPinMapFromDisk(ctx: PlatformContext): Map<WalletId, String> {
+        val encryptedPin = getEncryptedPinFromDisk(ctx, SPENDING_PIN_FILE_NAME)?.let {
             EncryptedPinSpending.deserialize(it)
         }
         return when (encryptedPin) {
@@ -82,58 +78,56 @@ object PinManager {
         }
     }
 
-    fun writeLockPinMapToDisk(pinMap: Map<WalletId, String>) {
+    fun writeLockPinMapToDisk(ctx: PlatformContext, pinMap: Map<WalletId, String>) {
         val encryptedPin = EncryptedPinLock.encrypt(pinMap)
-        val datadir = getDataDir()
-        val temp = datadir.resolve("temporary_pin.dat")
+        val datadir = getDataDir(ctx)
+        val temp = datadir.resolve("temporary_lock_pin.dat")
 
         FileSystem.SYSTEM.write(temp) {
             write(encryptedPin.serialize(EncryptedPinLock.MULTIPLE_WALLET_VERSION.toInt()))
         }
 
-        FileSystem.SYSTEM.copy(
+        FileSystem.SYSTEM.atomicMove(
             source = temp,
             target = datadir.resolve(LOCK_PIN_FILE_NAME.toPath())
         )
-        FileSystem.SYSTEM.delete(temp)
     }
 
-    fun writeSpendingPinMapToDisk(pinMap: Map<WalletId, String>) {
+    fun writeSpendingPinMapToDisk(ctx: PlatformContext, pinMap: Map<WalletId, String>) {
         val encryptedPin = EncryptedPinSpending.encrypt(pinMap)
-        val datadir = getDataDir()
+        val datadir = getDataDir(ctx)
 
-        val temp = datadir.resolve("temporary_pin.dat")
+        val temp = datadir.resolve("temporary_spending_pin.dat")
         FileSystem.SYSTEM.write(temp) {
             write(encryptedPin.serialize(EncryptedPinSpending.MULTIPLE_WALLET_VERSION.toInt()))
         }
 
-        FileSystem.SYSTEM.copy(
+        FileSystem.SYSTEM.atomicMove(
             source = temp,
             target = datadir.resolve(SPENDING_PIN_FILE_NAME.toPath())
         )
-        FileSystem.SYSTEM.delete(temp)
     }
 
-    fun migrateSingleWalletPinCode(walletId: WalletId) {
-        val encryptedLockPin = getEncryptedPinFromDisk(LOCK_PIN_FILE_NAME)?.let {
+    fun migrateSingleWalletPinCode(ctx: PlatformContext, walletId: WalletId) {
+        val encryptedLockPin = getEncryptedPinFromDisk(ctx, LOCK_PIN_FILE_NAME)?.let {
             EncryptedPinLock.deserialize(it)
         }
         when (encryptedLockPin) {
             is EncryptedPinLock.SingleWallet -> {
                 val oldPin = encryptedLockPin.decrypt().decodeToString()
-                writeLockPinMapToDisk(mapOf(walletId to oldPin))
+                writeLockPinMapToDisk(ctx, mapOf(walletId to oldPin))
                 log.i("migrated lock-pin for wallet=$walletId")
             }
             else -> Unit
         }
 
-        val encryptedSpendingPin = getEncryptedPinFromDisk( SPENDING_PIN_FILE_NAME)?.let {
+        val encryptedSpendingPin = getEncryptedPinFromDisk(ctx, SPENDING_PIN_FILE_NAME)?.let {
             EncryptedPinSpending.deserialize(it)
         }
         when (encryptedSpendingPin) {
             is EncryptedPinSpending.SingleWallet -> {
                 val oldPin = encryptedSpendingPin.decrypt().decodeToString()
-                writeSpendingPinMapToDisk(mapOf(walletId to oldPin))
+                writeSpendingPinMapToDisk(ctx, mapOf(walletId to oldPin))
                 log.i("migrated spending-pin for wallet=$walletId")
             }
             else -> Unit

@@ -10,8 +10,10 @@ import fr.acinq.phoenix.data.UserWallet
 import fr.acinq.phoenix.data.WalletId
 import fr.acinq.phoenix.managers.SeedManager.loadAndDecrypt
 import fr.acinq.phoenix.security.EncryptedSeed
+import fr.acinq.phoenix.utils.PlatformContext
 import fr.acinq.phoenix.utils.extensions.gracefulMultiSeedDecryption
 import fr.acinq.phoenix.utils.extensions.gracefulSingleSeedDecryption
+import fr.acinq.phoenix.utils.getApplicationFilesDirectoryPath
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -20,22 +22,26 @@ import okio.buffer
 import okio.use
 
 object SeedManager {
-    private val BASE_DATADIR = FileSystem.SYSTEM_TEMPORARY_DIRECTORY.resolve( "node-data")
     private val SEED_FILE = "seed.dat"
     private val log = Logger.withTag("SeedManager")
 
-    init {
-        log.i("Canonical: $BASE_DATADIR")
-    }
-    fun getDatadir(): Path {
+    /**
+     * Returns the directory holding the encrypted seed (and the encrypted pin codes, see [PinManager]).
+     *
+     * This MUST be a durable, app-private location: on Android that's `Context.filesDir`, on iOS the
+     * app's Documents directory. In particular it must never be a cache or temporary directory, as those
+     * are purged by the OS under storage pressure (and by "clear cache" on Android), which would destroy
+     * the only copy of the user's seed.
+     */
+    fun getDatadir(ctx: PlatformContext): Path {
+        val datadir = getApplicationFilesDirectoryPath(ctx).toPath().resolve("node-data")
 
-        if (!FileSystem.SYSTEM.exists(BASE_DATADIR)) {
-            log.i("Base directory doesn't exist: $BASE_DATADIR")
-            FileSystem.SYSTEM.createDirectory(BASE_DATADIR)
+        if (!FileSystem.SYSTEM.exists(datadir)) {
+            log.i("base directory doesn't exist, creating it")
+            FileSystem.SYSTEM.createDirectories(datadir)
         }
 
-        log.i("Base directory: $BASE_DATADIR")
-        return BASE_DATADIR
+        return datadir
     }
 
     @Suppress("DEPRECATION")
@@ -66,7 +72,7 @@ object SeedManager {
                     val nodeId = keyManager.nodeKeys.nodeKey.publicKey
                     val walletId = WalletId(nodeId)
 
-                    PinManager.migrateSingleWalletPinCode(walletId)
+                    PinManager.migrateSingleWalletPinCode(phoenixGlobal.ctx, walletId)
 
                     DecryptSeedResult.Success(
                         userWalletsMap = mapOf(
@@ -121,14 +127,12 @@ object SeedManager {
     }
 
     /** Gets the encrypted seed from app private dir. */
-    fun loadEncryptedSeedFromDisk(phoenixGlobal: PhoenixGlobal): EncryptedSeed? = loadSeedFromDir(getDatadir(), SEED_FILE)
+    fun loadEncryptedSeedFromDisk(phoenixGlobal: PhoenixGlobal): EncryptedSeed? = loadSeedFromDir(getDatadir(phoenixGlobal.ctx), SEED_FILE)
 
     /** Extracts an encrypted seed contained in a given file/folder. Returns null if the file does not exist. */
     private fun loadSeedFromDir(dir: Path, seedFileName: String): EncryptedSeed? {
-//        val seedFile = File(dir, seedFileName)
         val seedFile = dir.resolve(seedFileName)
         val seedFileMetadata = FileSystem.SYSTEM.metadataOrNull(seedFile)
-        log.i("Seed file metadata: $seedFileMetadata")
 
         return if (!FileSystem.SYSTEM.exists(seedFile)) {
             log.i("seed file doesn't exist")
@@ -150,7 +154,8 @@ object SeedManager {
         }
     }
 
-    fun writeSeedToDisk(phoenixGlobal: PhoenixGlobal, seed: EncryptedSeed.V2.MultipleSeed, overwrite: Boolean = false) = writeSeedToDir(getDatadir(), seed, overwrite)
+    fun writeSeedToDisk(phoenixGlobal: PhoenixGlobal, seed: EncryptedSeed.V2.MultipleSeed, overwrite: Boolean = false) =
+        writeSeedToDir(getDatadir(phoenixGlobal.ctx), seed, overwrite)
 
     private fun writeSeedToDir(dir: Path, seed: EncryptedSeed.V2.MultipleSeed, overwrite: Boolean) {
         // 1 - create dir
@@ -161,21 +166,37 @@ object SeedManager {
         // 2 - encrypt and write in a temporary file
         val temp = dir.resolve("temporary_seed.dat".toPath())
 
-        FileSystem.SYSTEM.write(temp) {
-            write(seed.serialize())
-        }
+        try {
+            FileSystem.SYSTEM.write(temp) {
+                write(seed.serialize())
+            }
 
-        // 3 - decrypt temp file and check validity; if correct, move temp file to final file
-        val checkSeed = loadSeedFromDir(dir, temp.name) as EncryptedSeed.V2.MultipleSeed
-        if (!checkSeed.ciphertext.contentEquals(seed.ciphertext)) {
-            log.w("seed check do not match!")
-//            throw WriteErrorCheckDontMatch
+            // 3 - read the temp file back and check that it matches what we meant to write. If it doesn't, abort
+            // rather than replace a good seed file with a corrupted one.
+            val checkSeed = loadSeedFromDir(dir, temp.name)
+            if (checkSeed !is EncryptedSeed.V2.MultipleSeed
+                || !checkSeed.iv.contentEquals(seed.iv)
+                || !checkSeed.ciphertext.contentEquals(seed.ciphertext)
+            ) {
+                log.e("seed check does not match, aborting write")
+                throw WriteErrorCheckDontMatch()
+            }
+
+            // 4 - atomically replace the seed file. A plain copy is not safe here: an interruption partway
+            // through would leave a truncated seed.dat, i.e. an unrecoverable wallet.
+            FileSystem.SYSTEM.atomicMove(
+                source = temp,
+                target = dir.resolve(SEED_FILE.toPath())
+            )
+        } catch (e: Exception) {
+            // the move consumes the temp file, so this only has an effect when we failed before that point
+            try {
+                FileSystem.SYSTEM.delete(temp, mustExist = false)
+            } catch (cleanupError: Exception) {
+                log.w("could not clean up temporary seed file: ${cleanupError.message}")
+            }
+            throw e
         }
-        FileSystem.SYSTEM.copy(
-            source = temp,
-            target = dir.resolve(SEED_FILE.toPath())
-        )
-        FileSystem.SYSTEM.delete(temp)
     }
 
     class WriteErrorCheckDontMatch : RuntimeException("failed to write the seed to disk: temporary file do not match")

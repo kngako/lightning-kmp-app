@@ -150,7 +150,10 @@ object Parser {
 
         val amountSplit = url.parameters["amount"]?.trim()?.split(".", ignoreCase = true, limit = 2)
         val btcPart = amountSplit?.first()
-        val satPart = amountSplit?.last()?.take(8)?.padEnd(8, '0')
+        // note: use getOrNull(1) and not last(), otherwise an amount without a decimal separator (e.g. "1")
+        // would yield a single-element list where first() == last(), and the integer part would be reused
+        // as the fractional part (i.e. "1" would be read as 1.1 btc).
+        val satPart = amountSplit?.getOrNull(1)?.take(8)?.padEnd(8, '0')
         val amount = when {
             btcPart != null && satPart != null -> btcPart + satPart
             btcPart != null && satPart == null -> btcPart + "00000000"
