@@ -16,7 +16,7 @@ version = "1.0.0"
 
 kotlin {
 //    jvm()
-    androidLibrary {
+    android {
         namespace = "org.jetbrains.kotlinx.multiplatform.library.template"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
