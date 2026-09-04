@@ -37,8 +37,19 @@ kotlin {
         }
 
     }
-    iosArm64()
-    iosSimulatorArm64()
+    // Declared only on a mac, because only there can they resolve. lightning-kmp gates its own apple
+    // targets behind `currentOs.isMacOsX`, and secp256k1-kmp further down the chain declares a
+    // libsecp256k1 cinterop, which makes gradle switch off klib cross compilation for apple targets.
+    // So on a linux/windows host nothing in the composite offers an ios variant of
+    // lightning-kmp-core, and declaring these targets anyway leaves every ios compilation unable to
+    // resolve it. That is not just a warning: it fails the IDE's
+    // `transformAppleMainCInteropDependenciesMetadataForIde` sync task, so the project will not
+    // import at all. Building an ios binary needs a mac regardless -- this only stops a host that
+    // cannot do it from pretending it can.
+    if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+        iosArm64()
+        iosSimulatorArm64()
+    }
 //    linuxX64()
 
     sourceSets {
@@ -149,8 +160,12 @@ kotlin {
             implementation("io.ktor:ktor-client-mock:3.1.0")
             implementation(libs.squareup.okio.fakefilesystem)
         }
-        iosMain.dependencies {
-            implementation(libs.sqldelight.native.driver)
+        // Only exists when the ios targets above were declared; the default hierarchy template
+        // creates this source set from them.
+        if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+            iosMain.dependencies {
+                implementation(libs.sqldelight.native.driver)
+            }
         }
     }
 }
