@@ -38,6 +38,7 @@ import fr.acinq.phoenix.managers.PeerManager
 import fr.acinq.phoenix.managers.global.CurrencyManager
 import fr.acinq.phoenix.utils.MnemonicLanguage
 import fr.acinq.phoenix.utils.SystemNotificationHelper
+import fr.acinq.phoenix.utils.preferences.GlobalPrefs
 import fr.acinq.phoenix.utils.preferences.InternalPrefs
 import fr.acinq.phoenix.utils.preferences.UserPrefs
 import fr.acinq.phoenix.utils.preferences.UserWalletMetadata
@@ -75,8 +76,8 @@ object BusinessManager {
     /** Map of jobs monitoring events/payments once business starts */
     private val eventsMonitoringJobs = mutableMapOf<WalletId, BusinessMonitorJobs>() //List<Job>>()
 
-    fun initialize(context: Context) {
-        appContext = context.applicationContext // TODO: we should be getting this from phoenixGloba...
+    fun initialize(lightningApplication: LightningApplication) {
+        appContext = lightningApplication.getApplicationContext() // TODO: we should be getting this from phoenixGloba...
     }
 
     /**
@@ -102,7 +103,7 @@ object BusinessManager {
 
         val walletId = WalletId(walletInfo.nodeIdHash)
         val nodeId = walletInfo.nodeId.toHex()
-        val globalPrefs = application.getGlobalPrefs()
+        val globalPrefs: GlobalPrefs = application.getGlobalPrefs()
         val walletMetadata = globalPrefs.getAvailableWalletsMeta.first()[walletId] ?: run {
             val metadata = UserWalletMetadata(
                 walletId = walletId,
