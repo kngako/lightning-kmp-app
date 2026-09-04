@@ -1,0 +1,4 @@
+[submodule "experimental/lightning-kmp"]
+	path = experimental/lightning-kmp
+	url = https://github.com/kngako/lightning-kmp.git
+	branch = threshold

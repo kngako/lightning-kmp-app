@@ -53,6 +53,26 @@ kotlin {
         // source set `androidHostTest`, not `androidUnitTest`. Declaring these on `androidUnitTest` left them
         // off every compilation, so Robolectric was never actually on the test classpath.
         getByName("androidHostTest").dependencies {
+            // Robolectric is a real jvm, so these tests need the secp256k1 JNI natives -- but the
+            // android host-test classpath drops them. lightning-kmp-core pulls
+            // `secp256k1-kmp-jni-jvm`, which the composite build substitutes for secp256k1-kmp's
+            // `:jni:jvm:all`; that project is an empty aggregator that re-exports the per-OS native
+            // projects via `api`, and those are plain `java-library` variants that AGP does not
+            // select for an android consumer. The dependency stays in the graph while contributing
+            // no artifact, so `Secp256k1` fails to initialise at the first crypto call.
+            //
+            // Naming the per-OS project directly gets a variant AGP will take. It also carries the
+            // loader (`:jni:jvm`) and `NativeSecp256k1` (`:jni`) transitively, so this one line is
+            // the whole native stack. Picked by host OS exactly as bitcoin-kmp picks its own.
+            // The version is never resolved -- substitution matches on group:name.
+            when {
+                org.gradle.internal.os.OperatingSystem.current().isLinux ->
+                    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-jvm-linux:0.24.0")
+                org.gradle.internal.os.OperatingSystem.current().isMacOsX ->
+                    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-jvm-darwin:0.24.0")
+                org.gradle.internal.os.OperatingSystem.current().isWindows ->
+                    implementation("fr.acinq.secp256k1:secp256k1-kmp-jni-jvm-mingw:0.24.0")
+            }
             implementation(libs.robolectric)
 
             implementation(libs.androidx.test.core.ktx)
@@ -92,7 +112,19 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.serialization.cbor)
 
-            api(libs.lightning.kmp.core)
+            // Comes from the experimental/lightning-kmp submodule, not from a repository: the
+            // includeBuild in settings.gradle.kts substitutes these coordinates for that build's
+            // :lightning-kmp-core project. Named as a bare module rather than through the version
+            // catalog because no repository serves this: gradle has no syntax for a project
+            // dependency that crosses a build boundary, so the coordinates are what the
+            // substitution rule matches on. Dropping that includeBuild leaves this unresolvable.
+            //
+            // The version is never resolved -- substitution matches on group:name alone -- but it
+            // is what gets recorded for this `api` dependency in the published pom and module
+            // metadata, so it tracks the submodule's own version (experimental/lightning-kmp's
+            // gradle.properties). Omitting it emits metadata with no version at all, which no
+            // consumer can resolve.
+            api("fr.acinq.lightning:lightning-kmp-core:1.13.1-SNAPSHOT")
 
             implementation(libs.navigation.compose)
 

@@ -19,7 +19,6 @@ package fr.acinq.phoenix.data.lnurl
 import fr.acinq.bitcoin.ByteVector
 import fr.acinq.bitcoin.ByteVector32
 import fr.acinq.bitcoin.Crypto
-import fr.acinq.bitcoin.DeterministicWallet
 import fr.acinq.bitcoin.KeyPath
 import fr.acinq.bitcoin.PrivateKey
 import fr.acinq.bitcoin.PublicKey
@@ -27,6 +26,7 @@ import fr.acinq.bitcoin.crypto.Digest
 import fr.acinq.bitcoin.crypto.Pack
 import fr.acinq.bitcoin.crypto.hmac
 import fr.acinq.lightning.crypto.LocalKeyManager
+import fr.acinq.secp256k1.Secp256k1
 import io.ktor.http.Url
 
 data class LnurlAuth(
@@ -77,7 +77,7 @@ data class LnurlAuth(
             challenge: String,
             key: PrivateKey
         ): Pair<PublicKey, ByteVector> {
-            return key.publicKey() to Crypto.compact2der(Crypto.sign(data = ByteVector32.fromValidHex(challenge), privateKey = key))
+            return key.publicKey() to ByteVector(Secp256k1.compact2der(Crypto.sign(data = ByteVector32.fromValidHex(challenge), privateKey = key).toByteArray()))
         }
 
         /**
@@ -95,7 +95,7 @@ data class LnurlAuth(
             val useAndroidLegacyScheme = scheme == Scheme.ANDROID_LEGACY_SCHEME && LegacyDomain.isEligible(serviceUrl)
             val hashingKeyPath = KeyPath("m/138'/0")
             val hashingKey = if (useAndroidLegacyScheme) {
-                DeterministicWallet.derivePrivateKey(localKeyManager.nodeKeys.legacyNodeKey, hashingKeyPath)
+                localKeyManager.nodeKeys.legacyNodeKey.derivePrivateKey(hashingKeyPath)
             } else {
                 localKeyManager.derivePrivateKey(hashingKeyPath)
             }
@@ -105,7 +105,7 @@ data class LnurlAuth(
                 hashingKey = hashingKey.privateKey.value.toByteArray()
             )
             return if (useAndroidLegacyScheme) {
-                DeterministicWallet.derivePrivateKey(hashingKey, path).privateKey
+                hashingKey.derivePrivateKey(path).privateKey
             } else {
                 localKeyManager.derivePrivateKey(path).privateKey
             }
