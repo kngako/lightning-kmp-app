@@ -160,6 +160,12 @@ kotlin {
             implementation("io.ktor:ktor-client-mock:3.1.0")
             implementation(libs.squareup.okio.fakefilesystem)
         }
+        jvmMain.dependencies {
+            // The jvm counterpart to android-driver / native-driver. Brings org.xerial:sqlite-jdbc
+            // in at runtime scope, which is all DbFactory.jvm.kt needs -- it configures the driver
+            // through connection Properties rather than against xerial's own types.
+            implementation(libs.sqldelight.sqlite.driver)
+        }
         // Only exists when the ios targets above were declared; the default hierarchy template
         // creates this source set from them.
         if (org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
