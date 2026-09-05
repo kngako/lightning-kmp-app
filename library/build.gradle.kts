@@ -161,6 +161,11 @@ kotlin {
             implementation(libs.squareup.okio.fakefilesystem)
         }
         jvmMain.dependencies {
+            // Argon2id, for KeyStoreFunctions.jvm.kt. The jdk offers no memory-hard KDF --
+            // only PBKDF2 -- and this derives the key that protects a wallet seed, so the
+            // resistance to GPU and ASIC search is the whole point of the dependency.
+            implementation(libs.bouncycastle.prov)
+
             // The jvm counterpart to android-driver / native-driver. Brings org.xerial:sqlite-jdbc
             // in at runtime scope, which is all DbFactory.jvm.kt needs -- it configures the driver
             // through connection Properties rather than against xerial's own types.

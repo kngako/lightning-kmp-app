@@ -51,7 +51,7 @@ actual fun getTemporaryDirectoryPath(ctx: PlatformContext): String =
  * resolves "node-data" against [getApplicationFilesDirectoryPath] -- and most systems
  * clear the temporary directory on reboot.
  */
-private fun defaultApplicationDir(): File {
+internal fun defaultApplicationDir(): File {
     val home = File(System.getProperty("user.home"))
     val os = System.getProperty("os.name").orEmpty().lowercase(Locale.ROOT)
     return when {

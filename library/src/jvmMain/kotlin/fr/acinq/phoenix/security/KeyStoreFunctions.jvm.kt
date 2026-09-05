@@ -1,26 +1,21 @@
 package fr.acinq.phoenix.security
 
 /**
- * **Not implemented, on purpose. These throw.**
+ * Backed by [JvmKeyStore], which derives its key from a passphrase the embedding
+ * application supplies through `JvmKeyStore.unlock` before any seed is read or written.
  *
- * Android backs these with `AndroidKeyStore` via `KeystoreHelper`, StrongBox-backed where
- * the device has a secure element, and the key material never leaves hardware. The jvm has
- * no portable equivalent, so choosing what replaces it -- a passphrase-derived KEK, an OS
- * keychain through JNA, or a key file -- is a security decision about wallet seed material
- * rather than a port. That decision is phase 3 of docs/jvm-target.md in the consuming
- * repository, and it has not been made.
+ * Both throw `java.security.KeyStoreException` while the store is locked, which is the same
+ * type android's `AndroidKeyStore` raises when it cannot serve a key, and which
+ * `gracefulSingleSeedDecryption`/`gracefulMultiSeedDecryption` already map to
+ * `DecryptSeedResult.Failure.KeyStoreFailure`. A caller that forgets to unlock therefore
+ * gets the failure it would get from a broken keystore, rather than a crash.
  *
- * These exist so the module compiles and the rest of the jvm target can be tested. A
- * loud failure is the point: the alternative is a placeholder that appears to work while
- * storing a seed weakly, and that is the one outcome worth ruling out. Nothing on this
- * platform can read or write a seed until they are replaced.
+ * **This has no hardware backing.** See the class documentation on [JvmKeyStore] for what
+ * that costs and why a desktop build holding real funds wants an OS keychain instead.
  */
 actual fun keyStoreDecryption(keyName: String, iv: ByteArray, ciphertext: ByteArray): ByteArray =
-    throw NotImplementedError(UNIMPLEMENTED)
+    JvmKeyStore.decrypt(keyName, iv, ciphertext)
 
+/** Returns the iv and the ciphertext, in that order, matching the android actual. */
 actual fun keyStoreEncryption(keyName: String, plainText: ByteArray): Pair<ByteArray, ByteArray> =
-    throw NotImplementedError(UNIMPLEMENTED)
-
-private const val UNIMPLEMENTED =
-    "jvm key storage is not implemented; see phase 3 of docs/jvm-target.md. " +
-        "This build cannot read or write a wallet seed."
+    JvmKeyStore.encrypt(keyName, plainText)
