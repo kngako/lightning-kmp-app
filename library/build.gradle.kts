@@ -15,7 +15,7 @@ group = "fr.acinq.phoenix"
 version = "1.0.0"
 
 kotlin {
-//    jvm()
+    jvm()
     android {
         namespace = "org.jetbrains.kotlinx.multiplatform.library.template"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
