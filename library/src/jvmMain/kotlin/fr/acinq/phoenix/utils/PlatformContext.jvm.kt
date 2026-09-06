@@ -55,14 +55,16 @@ internal fun defaultApplicationDir(): File {
     val home = File(System.getProperty("user.home"))
     val os = System.getProperty("os.name").orEmpty().lowercase(Locale.ROOT)
     return when {
+        // Ahead of the windows branch on purpose: "darwin".contains("win") is true, so
+        // asking about windows first would route a darwin os name into AppData.
+        os.contains("mac") || os.contains("darwin") ->
+            File(home, "Library/Application Support/$APPLICATION_DIR_NAME")
+
         os.contains("win") ->
             (System.getenv("LOCALAPPDATA") ?: System.getenv("APPDATA"))
                 ?.takeIf { it.isNotBlank() }
                 ?.let { File(it, APPLICATION_DIR_NAME) }
                 ?: File(home, "AppData/Local/$APPLICATION_DIR_NAME")
-
-        os.contains("mac") || os.contains("darwin") ->
-            File(home, "Library/Application Support/$APPLICATION_DIR_NAME")
 
         else ->
             System.getenv("XDG_DATA_HOME")
