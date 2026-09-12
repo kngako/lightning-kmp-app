@@ -2,10 +2,8 @@ package fr.acinq.phoenix.managers
 
 import co.touchlab.kermit.Logger
 import fr.acinq.bitcoin.PrivateKey
-import fr.acinq.phoenix.PhoenixGlobal
 import fr.acinq.phoenix.data.DecryptNostrKeysResult
 import fr.acinq.phoenix.security.EncryptedNostrKeys
-import fr.acinq.phoenix.utils.AtomicFileWrite
 import fr.acinq.phoenix.utils.extensions.DecryptionFailure
 import fr.acinq.phoenix.utils.extensions.classifyDecryptionFailure
 import okio.FileSystem
@@ -15,40 +13,19 @@ import okio.buffer
 import okio.use
 
 /**
- * Reads and writes `nostr-keys.dat`: the bare nostr secrets this device holds that did
- * not come from a seed.
+ * Reads `nostr-keys.dat`, the version-1 file that held bare nostr secrets before
+ * `nostr-credentials.dat` replaced it. Read-only: its one caller is
+ * [NostrCredentialManager.migrateFromNostrKeys], which converts the file once and
+ * deletes it. Nothing writes this file any more, and nothing should.
  *
- * Lives next to `seed.dat` in [SeedManager.getDatadir] -- the durable, app-private
- * location whose requirements that function spells out -- and is encrypted under the
- * same keystore key. It is the shape of [SeedManager] with the type changed, and it
- * shares the atomic write with it through [AtomicFileWrite].
- *
- * An older build of the consuming app does not know this file exists. It reads
- * `seed.dat` as it always did, so a downgrade loses sight of an imported key without
- * touching any wallet; the file is still there for the next upgrade.
+ * This was `NostrKeyManager`. The read half is kept intact so that the migration reads
+ * the old file exactly as the build that wrote it did; the write half is gone.
  */
-object NostrKeyManager {
-    private const val KEYS_FILE = "nostr-keys.dat"
-    private const val TEMPORARY_KEYS_FILE = "temporary_nostr_keys.dat"
-    private val log = Logger.withTag("NostrKeyManager")
+object LegacyNostrKeysFile {
+    internal const val KEYS_FILE = "nostr-keys.dat"
+    private val log = Logger.withTag("LegacyNostrKeysFile")
 
-    fun loadAndDecrypt(phoenixGlobal: PhoenixGlobal): DecryptNostrKeysResult =
-        loadAndDecrypt(SeedManager.getDatadir(phoenixGlobal.ctx))
-
-    /**
-     * Wrapper for [loadAndDecrypt].
-     * Returns an empty map if the file does not exist yet.
-     * Returns null if there was a problem loading or decrypting it.
-     */
-    fun loadAndDecryptOrNull(phoenixGlobal: PhoenixGlobal): Map<String, PrivateKey>? =
-        when (val res = loadAndDecrypt(phoenixGlobal)) {
-            is DecryptNostrKeysResult.Success -> res.keys
-            is DecryptNostrKeysResult.Failure.FileNotFound -> emptyMap()
-            is DecryptNostrKeysResult.Failure -> null
-        }
-
-    fun writeToDisk(phoenixGlobal: PhoenixGlobal, keys: EncryptedNostrKeys) =
-        writeToDir(SeedManager.getDatadir(phoenixGlobal.ctx), keys)
+    fun exists(dir: Path): Boolean = FileSystem.SYSTEM.exists(dir.resolve(KEYS_FILE))
 
     /**
      * Reads [dir]/`nostr-keys.dat`.
@@ -62,7 +39,7 @@ object NostrKeyManager {
      * nothing about the file. [classifyDecryptionFailure] draws those lines, the same
      * way for every encrypted file here.
      */
-    internal fun loadAndDecrypt(dir: Path): DecryptNostrKeysResult {
+    fun loadAndDecrypt(dir: Path): DecryptNostrKeysResult {
         log.i("loadAndDecrypt")
         val serialized = try {
             readFile(dir.resolve(KEYS_FILE)) ?: return DecryptNostrKeysResult.Failure.FileNotFound
@@ -91,6 +68,11 @@ object NostrKeyManager {
         }
     }
 
+    /** Deletes the file once its contents live in `nostr-credentials.dat`. */
+    fun delete(dir: Path) {
+        FileSystem.SYSTEM.delete(dir.resolve(KEYS_FILE), mustExist = false)
+    }
+
     /** Null when the file does not exist; throws when it exists and cannot be read. */
     private fun readFile(file: Path): ByteArray? {
         if (!FileSystem.SYSTEM.exists(file)) {
@@ -106,18 +88,9 @@ object NostrKeyManager {
         }
     }
 
-    internal fun writeToDir(dir: Path, keys: EncryptedNostrKeys) {
-        val bytes = keys.serialize()
-        AtomicFileWrite.writeVerified(
-            dir = dir,
-            fileName = KEYS_FILE,
-            temporaryFileName = TEMPORARY_KEYS_FILE,
-            bytes = bytes,
-            check = { readBack -> readBack.contentEquals(bytes) },
-            onMismatch = { WriteErrorCheckDontMatch() },
-        )
-    }
-
-    class WriteErrorCheckDontMatch : RuntimeException("failed to write the nostr keys to disk: temporary file does not match")
     class UnreadableKeys(msg: String) : RuntimeException(msg)
 }
+
+/** The keys a version-1 file holds, as the credentials they become. */
+internal fun Map<String, PrivateKey>.toCredentials(): Map<String, fr.acinq.phoenix.security.NostrCredential> =
+    mapValues { (_, privateKey) -> fr.acinq.phoenix.security.NostrCredential.Secret(privateKey) }

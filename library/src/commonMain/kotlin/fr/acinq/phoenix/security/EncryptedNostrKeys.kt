@@ -8,6 +8,11 @@ import okio.Buffer
 /**
  * Bare nostr secrets, encrypted at rest under the same keystore key as the seed.
  *
+ * **The version-1 file, superseded by [EncryptedNostrCredentials].** Kept so that
+ * `NostrCredentialManager.migrateFromNostrKeys` reads a `nostr-keys.dat` exactly as the
+ * build that wrote it did; [encrypt] exists only so that the migration's test can
+ * produce one. Nothing in production writes this file any more.
+ *
  * A sibling of [EncryptedSeed], not a variant of it. `seed.dat` holds mnemonics --
  * its reader runs `MnemonicCode.toSeed` over every entry and builds a `LocalKeyManager`
  * from the result -- and a 32-byte key has no place in that shape. Nor could it be

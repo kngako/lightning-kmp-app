@@ -106,7 +106,7 @@ fun LocalKeyManager.cloudKey(): ByteVector32 {
  *
  * On a non-mainnet chain this uses account `1'`. NIP-06 leaves the account index to the
  * application, so that is legal -- but note it is only reached from a seed. A nostr key
- * imported directly (see `NostrKeyManager`) bypasses this derivation entirely and signs
+ * imported directly (see `NostrCredentialManager`) bypasses this derivation entirely and signs
  * with whatever was pasted, on every chain; that is correct, and not something to "fix".
  */
 fun LocalKeyManager.nostrPrivateKey(): PrivateKey {

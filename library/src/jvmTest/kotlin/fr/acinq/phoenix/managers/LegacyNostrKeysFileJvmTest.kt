@@ -7,25 +7,23 @@ import fr.acinq.phoenix.security.EncryptedNostrKeys
 import fr.acinq.phoenix.security.JvmKeyStore
 import fr.acinq.phoenix.security.KeyStoreNames
 import fr.acinq.phoenix.security.keyStoreEncryption
-import okio.FileSystem
 import okio.Path.Companion.toOkioPath
-import okio.SYSTEM
 import java.io.File
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 /**
- * The half `EncryptedNostrKeysTest` cannot do: encrypt, write, read back, decrypt. The jvm
- * is the one target where the key store can be unlocked on the host, so it is where the
- * atomic write and the integrity check on read are actually exercised.
+ * The reader of the version-1 file, which the migration in `NostrCredentialManager`
+ * depends on reading exactly as the build that wrote it did. This was
+ * `NostrKeyManagerJvmTest`; the cases that wrote through the manager are gone with the
+ * writer, and the file is produced here the way the migration's test produces it -- the
+ * bytes of `EncryptedNostrKeys.encrypt`, written directly.
  */
-class NostrKeyManagerJvmTest {
+class LegacyNostrKeysFileJvmTest {
 
     private lateinit var storeDir: File
     private lateinit var dataDir: File
@@ -52,35 +50,23 @@ class NostrKeyManagerJvmTest {
 
     private fun keyed(vararg keys: PrivateKey) = keys.associateBy { it.nostrPublicKeyHex() }
 
+    private fun writeV1(bytes: ByteArray) = File(dataDir, "nostr-keys.dat").writeBytes(bytes)
+
     @Test
     fun `a missing file is not found, not an error`() {
-        assertIs<DecryptNostrKeysResult.Failure.FileNotFound>(NostrKeyManager.loadAndDecrypt(dataDir.toOkioPath()))
+        assertIs<DecryptNostrKeysResult.Failure.FileNotFound>(LegacyNostrKeysFile.loadAndDecrypt(dataDir.toOkioPath()))
     }
 
     @Test
-    fun `round trips two keys by their public keys`() {
+    fun `reads two keys by their public keys`() {
         val keys = keyed(first, second)
+        writeV1(EncryptedNostrKeys.encrypt(keys).serialize())
 
-        NostrKeyManager.writeToDir(dataDir.toOkioPath(), EncryptedNostrKeys.encrypt(keys))
-        val result = NostrKeyManager.loadAndDecrypt(dataDir.toOkioPath())
+        val result = LegacyNostrKeysFile.loadAndDecrypt(dataDir.toOkioPath())
 
         assertIs<DecryptNostrKeysResult.Success>(result)
         assertEquals(keys, result.keys)
         assertEquals(64, result.keys.keys.first().length, "keyed by the x-only public key, hex")
-    }
-
-    @Test
-    fun `a second write replaces the file, and leaves no temporary behind`() {
-        val dir = dataDir.toOkioPath()
-        NostrKeyManager.writeToDir(dir, EncryptedNostrKeys.encrypt(keyed(first)))
-        NostrKeyManager.writeToDir(dir, EncryptedNostrKeys.encrypt(keyed(first, second)))
-
-        val result = NostrKeyManager.loadAndDecrypt(dir)
-
-        assertIs<DecryptNostrKeysResult.Success>(result)
-        assertEquals(keyed(first, second), result.keys)
-        assertTrue(FileSystem.SYSTEM.exists(dir.resolve("nostr-keys.dat")))
-        assertFalse(FileSystem.SYSTEM.exists(dir.resolve("temporary_nostr_keys.dat")))
     }
 
     /**
@@ -92,39 +78,30 @@ class NostrKeyManagerJvmTest {
     fun `a key filed under the wrong public key is refused as corrupt`() {
         val json = """{"${second.nostrPublicKeyHex()}":"${first.value.toHex()}"}"""
         val (iv, ciphertext) = keyStoreEncryption(KeyStoreNames.KEY_NO_AUTH, json.encodeToByteArray())
-        NostrKeyManager.writeToDir(dataDir.toOkioPath(), EncryptedNostrKeys(iv, ciphertext))
+        writeV1(EncryptedNostrKeys(iv, ciphertext).serialize())
 
-        assertIs<DecryptNostrKeysResult.Failure.SerializationError>(NostrKeyManager.loadAndDecrypt(dataDir.toOkioPath()))
+        assertIs<DecryptNostrKeysResult.Failure.SerializationError>(LegacyNostrKeysFile.loadAndDecrypt(dataDir.toOkioPath()))
     }
 
     @Test
     fun `json that is not a map of keys is a serialization error`() {
         val (iv, ciphertext) = keyStoreEncryption(KeyStoreNames.KEY_NO_AUTH, "[1,2,3]".encodeToByteArray())
-        NostrKeyManager.writeToDir(dataDir.toOkioPath(), EncryptedNostrKeys(iv, ciphertext))
+        writeV1(EncryptedNostrKeys(iv, ciphertext).serialize())
 
-        assertIs<DecryptNostrKeysResult.Failure.SerializationError>(NostrKeyManager.loadAndDecrypt(dataDir.toOkioPath()))
+        assertIs<DecryptNostrKeysResult.Failure.SerializationError>(LegacyNostrKeysFile.loadAndDecrypt(dataDir.toOkioPath()))
     }
 
     @Test
     fun `a file of another version is a serialization error, not unreadable`() {
-        val file = File(dataDir, "nostr-keys.dat")
-        file.writeBytes(byteArrayOf(9) + ByteArray(16) + ByteArray(32))
+        writeV1(byteArrayOf(9) + ByteArray(16) + ByteArray(32))
 
-        assertIs<DecryptNostrKeysResult.Failure.SerializationError>(NostrKeyManager.loadAndDecrypt(dataDir.toOkioPath()))
+        assertIs<DecryptNostrKeysResult.Failure.SerializationError>(LegacyNostrKeysFile.loadAndDecrypt(dataDir.toOkioPath()))
     }
 
     @Test
     fun `an empty file is unreadable`() {
-        File(dataDir, "nostr-keys.dat").writeBytes(ByteArray(0))
+        writeV1(ByteArray(0))
 
-        assertIs<DecryptNostrKeysResult.Failure.FileUnreadable>(NostrKeyManager.loadAndDecrypt(dataDir.toOkioPath()))
-    }
-
-    @Test
-    fun `a locked key store is a key store failure, and says nothing about the file`() {
-        NostrKeyManager.writeToDir(dataDir.toOkioPath(), EncryptedNostrKeys.encrypt(keyed(first)))
-        JvmKeyStore.lock()
-
-        assertIs<DecryptNostrKeysResult.Failure.KeyStoreFailure>(NostrKeyManager.loadAndDecrypt(dataDir.toOkioPath()))
+        assertIs<DecryptNostrKeysResult.Failure.FileUnreadable>(LegacyNostrKeysFile.loadAndDecrypt(dataDir.toOkioPath()))
     }
 }

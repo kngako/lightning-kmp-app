@@ -8,7 +8,7 @@ import kotlin.test.assertFailsWith
 /**
  * Covers the on-disk layout of the nostr keys file. Only the serialization is exercised
  * here: encrypting and decrypting go through the platform keystore, which isn't available
- * on the host -- `NostrKeyManagerJvmTest` does that half where a keystore can be unlocked.
+ * on the host -- `LegacyNostrKeysFileJvmTest` does that half where a keystore can be unlocked.
  *
  * This format is a compatibility contract -- changing it makes every key already on disk
  * unreadable -- so the expected bytes are spelled out literally rather than derived from
