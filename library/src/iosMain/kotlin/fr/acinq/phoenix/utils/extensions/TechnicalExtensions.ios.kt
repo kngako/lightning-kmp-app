@@ -13,3 +13,6 @@ actual inline fun gracefulMultiSeedDecryption(action: () -> DecryptSeedResult): 
 } catch (e: Exception) {
     return DecryptSeedResult.Failure.DecryptionError(e)
 }
+
+/** The keychain helper throws nothing that can be told apart from a bad payload. */
+actual fun isKeyStoreFailure(e: Throwable): Boolean = false

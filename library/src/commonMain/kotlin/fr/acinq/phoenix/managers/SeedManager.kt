@@ -10,6 +10,7 @@ import fr.acinq.phoenix.data.UserWallet
 import fr.acinq.phoenix.data.WalletId
 import fr.acinq.phoenix.managers.SeedManager.loadAndDecrypt
 import fr.acinq.phoenix.security.EncryptedSeed
+import fr.acinq.phoenix.utils.AtomicFileWrite
 import fr.acinq.phoenix.utils.PlatformContext
 import fr.acinq.phoenix.utils.extensions.gracefulMultiSeedDecryption
 import fr.acinq.phoenix.utils.extensions.gracefulSingleSeedDecryption
@@ -157,46 +158,26 @@ object SeedManager {
     fun writeSeedToDisk(phoenixGlobal: PhoenixGlobal, seed: EncryptedSeed.V2.MultipleSeed, overwrite: Boolean = false) =
         writeSeedToDir(getDatadir(phoenixGlobal.ctx), seed, overwrite)
 
+    /**
+     * Encrypt to a temporary file, read it back, check it is what was meant, then atomically
+     * replace the seed file -- see [AtomicFileWrite] for why a plain write is not safe here.
+     * The check deserializes the bytes read back and compares `iv` and `ciphertext` with
+     * what was written, which is what this did before the write moved into the helper.
+     */
     private fun writeSeedToDir(dir: Path, seed: EncryptedSeed.V2.MultipleSeed, overwrite: Boolean) {
-        // 1 - create dir
-        if (!FileSystem.SYSTEM.exists(dir)) {
-            FileSystem.SYSTEM.createDirectories(dir)
-        }
-
-        // 2 - encrypt and write in a temporary file
-        val temp = dir.resolve("temporary_seed.dat".toPath())
-
-        try {
-            FileSystem.SYSTEM.write(temp) {
-                write(seed.serialize())
-            }
-
-            // 3 - read the temp file back and check that it matches what we meant to write. If it doesn't, abort
-            // rather than replace a good seed file with a corrupted one.
-            val checkSeed = loadSeedFromDir(dir, temp.name)
-            if (checkSeed !is EncryptedSeed.V2.MultipleSeed
-                || !checkSeed.iv.contentEquals(seed.iv)
-                || !checkSeed.ciphertext.contentEquals(seed.ciphertext)
-            ) {
-                log.e("seed check does not match, aborting write")
-                throw WriteErrorCheckDontMatch()
-            }
-
-            // 4 - atomically replace the seed file. A plain copy is not safe here: an interruption partway
-            // through would leave a truncated seed.dat, i.e. an unrecoverable wallet.
-            FileSystem.SYSTEM.atomicMove(
-                source = temp,
-                target = dir.resolve(SEED_FILE.toPath())
-            )
-        } catch (e: Exception) {
-            // the move consumes the temp file, so this only has an effect when we failed before that point
-            try {
-                FileSystem.SYSTEM.delete(temp, mustExist = false)
-            } catch (cleanupError: Exception) {
-                log.w("could not clean up temporary seed file: ${cleanupError.message}")
-            }
-            throw e
-        }
+        AtomicFileWrite.writeVerified(
+            dir = dir,
+            fileName = SEED_FILE,
+            temporaryFileName = "temporary_seed.dat",
+            bytes = seed.serialize(),
+            check = { readBack ->
+                val checkSeed = EncryptedSeed.deserialize(readBack)
+                checkSeed is EncryptedSeed.V2.MultipleSeed
+                    && checkSeed.iv.contentEquals(seed.iv)
+                    && checkSeed.ciphertext.contentEquals(seed.ciphertext)
+            },
+            onMismatch = { WriteErrorCheckDontMatch() },
+        )
     }
 
     class WriteErrorCheckDontMatch : RuntimeException("failed to write the seed to disk: temporary file do not match")

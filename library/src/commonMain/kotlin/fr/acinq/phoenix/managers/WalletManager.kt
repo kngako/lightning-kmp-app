@@ -101,11 +101,27 @@ fun LocalKeyManager.cloudKey(): ByteVector32 {
     return derivePrivateKey(path).privateKey.value
 }
 
-/** Key used to encrypt/decrypt blobs we store in the cloud. */
+/**
+ * The nostr signing key, at the NIP-06 path.
+ *
+ * On a non-mainnet chain this uses account `1'`. NIP-06 leaves the account index to the
+ * application, so that is legal -- but note it is only reached from a seed. A nostr key
+ * imported directly (see `NostrKeyManager`) bypasses this derivation entirely and signs
+ * with whatever was pasted, on every chain; that is correct, and not something to "fix".
+ */
 fun LocalKeyManager.nostrPrivateKey(): PrivateKey {
     val path = KeyPath(if (isMainnet()) "m/44'/1237'/0'/0/0" else "m/44'/1237'/1'/0/0")
     return derivePrivateKey(path).privateKey
 }
+
+/**
+ * The nostr public key for this secret: the x-only form, 32 bytes, 64 hex characters.
+ *
+ * Not `publicKey().toHex()`, which is the 33-byte compressed encoding. Nostr identifies a
+ * key by its x coordinate alone, so that form is what every relay, event and `npub`
+ * carries, and it is the one this and the consuming app's `Identity` must agree on.
+ */
+fun PrivateKey.nostrPublicKeyHex(): String = publicKey().xOnly().value.toHex()
 
 fun PrivateKey.nsecPassword(): String {
     return Crypto.hash160(
@@ -115,9 +131,12 @@ fun PrivateKey.nsecPassword(): String {
 
 fun LocalKeyManager.nsecPassword(): String = nostrPrivateKey().nsecPassword()
 
-fun LocalKeyManager.nostrPublicKey(): String {
-    return nostrPrivateKey().publicKey().toHex()
-}
+/**
+ * X-only, hex. This used to return `publicKey().toHex()` -- the compressed 33-byte
+ * encoding, sixty-six hex characters -- which is not a nostr public key at all. Nothing
+ * called it, which is the only reason it did not matter.
+ */
+fun LocalKeyManager.nostrPublicKey(): String = nostrPrivateKey().nostrPublicKeyHex()
 
 fun LocalKeyManager.cloudKeyHash(): String {
     return Crypto.hash160(cloudKey()).byteVector().toHex()
