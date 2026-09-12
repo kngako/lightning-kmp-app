@@ -38,3 +38,5 @@ actual inline fun gracefulMultiSeedDecryption(action: () -> DecryptSeedResult): 
         }
     }
 }
+
+actual fun isKeyStoreFailure(e: Throwable): Boolean = e is KeyStoreException
