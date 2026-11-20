@@ -11,7 +11,7 @@ datastorePreferences = "1.2.1"
 
 humanReadable = "1.12.3"
 
-kotlin = "2.4.10"
+kotlin = "2.4.21"
 kotlinx-datetime = "0.8.0"
 kotlinxSerialization = "1.11.0"
 
